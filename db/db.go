@@ -47,7 +47,7 @@ func (db *DB) ListProjects() ([]Project, error) {
 	db.b.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(projectBucket)
 
-		b.ForEach(func(k, v []byte) error {
+		return b.ForEach(func(k, v []byte) error {
 			p := Project{
 				Name: string(k),
 				URL:  string(v),
@@ -55,8 +55,6 @@ func (db *DB) ListProjects() ([]Project, error) {
 			projects = append(projects, p)
 			return nil
 		})
-
-		return nil
 	})
 
 	return projects, nil
