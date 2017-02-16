@@ -8,39 +8,45 @@ import (
 )
 
 func TestProjects(t *testing.T) {
+	assert := assert.New(t)
+
 	db, err := NewDB("test.db")
-	assert.NoError(t, err)
+	assert.NoError(err)
 	defer db.Close()
 	defer os.Remove(db.Path())
 
-	err = db.AddProject("Project Name", "https://www.example.com")
-	assert.NoError(t, err)
+	assert.NoError(db.AddProject("Project One", "https://one.example.com"))
+	assert.NoError(db.AddProject("Project Two", "https://two.example.com"))
 
-	{
-		err := db.UpdateVersion("Project Name", "1.0.1-a")
-		assert.NoError(t, err)
+	testCases := []struct {
+		projectName    string
+		projectVersion string
+		expectedErr    error
+	}{
+		{"Project One", "1.0.1-a", nil},
+		{"Project One", "2.0.0", nil},
+		{"Project Two", "3.0.0", nil},
+		{"Project-One", "1.0.1-a", errProjectNotFound},
+		{"Project One", "1-0-1-a", errBadVersion},
 	}
-	{
-		err := db.UpdateVersion("Project Name", "2.0.0")
-		assert.NoError(t, err)
-	}
-	{
-		err := db.UpdateVersion("Project Name", "1-0-1-a")
-		assert.Equal(t, err, errBadVersion)
-	}
-	{
-		err := db.UpdateVersion("Project-Name", "1.0.1-a")
-		assert.Equal(t, err, errProjectNotFound)
+	for _, tc := range testCases {
+		err := db.UpdateVersion(tc.projectName, tc.projectVersion)
+		assert.Equal(tc.expectedErr, err)
 	}
 
 	expected := []Project{
 		{
-			Name:     "Project Name",
-			URL:      "https://www.example.com",
+			Name:     "Project One",
+			URL:      "https://one.example.com",
 			Versions: []string{"1.0.1-a", "2.0.0"},
+		},
+		{
+			Name:     "Project Two",
+			URL:      "https://two.example.com",
+			Versions: []string{"3.0.0"},
 		},
 	}
 	actual, err := db.ListProjects()
-	assert.NoError(t, err)
-	assert.Equal(t, expected, actual)
+	assert.NoError(err)
+	assert.Equal(expected, actual)
 }
