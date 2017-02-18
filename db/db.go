@@ -1,16 +1,18 @@
 package db
 
 import (
-	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/boltdb/bolt"
 )
 
 var (
-	projectBucket = []byte("project")
-	versionBucket = []byte("version")
+	projectsBucket = []byte("projects")
+	versionBucket  = []byte("version")
+
+	urlKey = []byte("url")
 )
 
 var (
@@ -40,14 +42,27 @@ func (db *DB) Path() string {
 }
 
 func (db *DB) AddProject(name, url string) error {
-	return db.b.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(projectBucket)
-		if err != nil {
-			return err
-		}
+	tx, err := db.b.Begin(true)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 
-		return b.Put([]byte(name), []byte(url))
-	})
+	ps, err := tx.CreateBucketIfNotExists(projectsBucket)
+	if err != nil {
+		return err
+	}
+
+	p, err := ps.CreateBucketIfNotExists([]byte(name))
+	if err != nil {
+		return err
+	}
+
+	if err = p.Put(urlKey, []byte(url)); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 type Project struct {
@@ -59,29 +74,39 @@ type Project struct {
 func (db *DB) ListProjects() ([]Project, error) {
 	var projects []Project
 
-	db.b.View(func(tx *bolt.Tx) error {
-		pb := tx.Bucket(projectBucket)
-		vc := tx.Bucket(versionBucket).Cursor()
+	err := db.b.View(func(tx *bolt.Tx) error {
+		ps := tx.Bucket(projectsBucket)
+		c := ps.Cursor()
 
-		return pb.ForEach(func(name, url []byte) error {
-			p := Project{
-				Name: string(name),
+		for projectName, _ := c.First(); projectName != nil; projectName, _ = c.Next() {
+			p := ps.Bucket(projectName)
+			url := p.Get(urlKey)
+
+			project := Project{
+				Name: string(projectName),
 				URL:  string(url),
 			}
 
-			for k, v := vc.Seek(name); k != nil && bytes.HasPrefix(k, name); k, v = vc.Next() {
-				version := bytes.TrimPrefix(k, name)
-				version = append(version, v...)
-				p.Versions = append(p.Versions, string(version[1:]))
+			v := p.Bucket(versionBucket)
+			if v == nil {
+				projects = append(projects, project)
+				continue
 			}
 
-			projects = append(projects, p)
+			if err := v.ForEach(func(major, minor []byte) error {
+				version := fmt.Sprintf("%s%s", major, minor)
+				project.Versions = append(project.Versions, version)
+				return nil
+			}); err != nil {
+				return err
+			}
 
-			return nil
-		})
+			projects = append(projects, project)
+		}
+		return nil
 	})
 
-	return projects, nil
+	return projects, err
 }
 
 func (db *DB) UpdateVersion(name, version string) error {
@@ -94,17 +119,16 @@ func (db *DB) UpdateVersion(name, version string) error {
 	minor := version[i+1:]
 
 	return db.b.Update(func(tx *bolt.Tx) error {
-		pb := tx.Bucket(projectBucket)
-		if v := pb.Get([]byte(name)); v == nil {
+		p := tx.Bucket(projectsBucket).Bucket([]byte(name))
+		if p == nil {
 			return errProjectNotFound
 		}
 
-		vb, err := tx.CreateBucketIfNotExists(versionBucket)
+		v, err := p.CreateBucketIfNotExists(versionBucket)
 		if err != nil {
 			return err
 		}
 
-		name += ":" + major
-		return vb.Put([]byte(name), []byte(minor))
+		return v.Put([]byte(major), []byte(minor))
 	})
 }

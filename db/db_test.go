@@ -17,6 +17,7 @@ func TestProjects(t *testing.T) {
 
 	assert.NoError(db.AddProject("Project One", "https://one.example.com"))
 	assert.NoError(db.AddProject("Project Two", "https://two.example.com"))
+	assert.NoError(db.AddProject("Project Three", "https://three.example.com"))
 
 	testCases := []struct {
 		projectName    string
@@ -39,6 +40,10 @@ func TestProjects(t *testing.T) {
 			Name:     "Project One",
 			URL:      "https://one.example.com",
 			Versions: []string{"1.0.1-a", "2.0.0"},
+		},
+		{
+			Name: "Project Three",
+			URL:  "https://three.example.com",
 		},
 		{
 			Name:     "Project Two",
