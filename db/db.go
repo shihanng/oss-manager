@@ -150,7 +150,7 @@ func (db *DB) UpdateVersion(name, version string) error {
 	})
 }
 
-func (db *DB) FirstLatest() (projectName string, versions []string, err error) {
+func (db *DB) FirstLatest() (proj Project, err error) {
 	err = db.b.View(func(tx *bolt.Tx) error {
 		l := tx.Bucket(latestBucket)
 		if l == nil {
@@ -162,11 +162,18 @@ func (db *DB) FirstLatest() (projectName string, versions []string, err error) {
 		if project == nil {
 			return errProjectNotFound
 		}
-		projectName = string(project)
+
+		p := tx.Bucket(projectsBucket).Bucket([]byte(project))
+		if p == nil {
+			return errProjectNotFound
+		}
+
+		proj.Name = string(project)
+		proj.URL = string(p.Get(urlKey))
 
 		pl := l.Bucket(project)
 		return pl.ForEach(func(_, version []byte) error {
-			versions = append(versions, string(version))
+			proj.Versions = append(proj.Versions, string(version))
 			return nil
 		})
 	})
