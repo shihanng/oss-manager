@@ -54,4 +54,29 @@ func TestProjects(t *testing.T) {
 	actual, err := db.ListProjects()
 	assert.NoError(err)
 	assert.Equal(expected, actual)
+
+	expecteds := []struct {
+		projectName string
+		versions    []string
+	}{
+		{"Project One", []string{"1.0.1-a", "2.0.0"}},
+		{"Project Two", []string{"3.0.0"}},
+	}
+
+	for _, expected := range expecteds {
+		project, versions, err := db.FirstLatest()
+		assert.NoError(err)
+		assert.Equal(expected.projectName, project)
+		assert.Equal(expected.versions, versions)
+
+		assert.NoError(db.DeleteLatest(project))
+	}
+
+	// Should be empty.
+	project, versions, err := db.FirstLatest()
+	assert.Empty(project)
+	assert.Nil(versions)
+	assert.EqualError(err, errProjectNotFound.Error())
+
+	assert.EqualError(db.DeleteLatest(project), "incompatible value")
 }

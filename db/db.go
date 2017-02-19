@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,6 +12,7 @@ import (
 var (
 	projectsBucket = []byte("projects")
 	versionBucket  = []byte("version")
+	latestBucket   = []byte("latest")
 
 	urlKey = []byte("url")
 )
@@ -124,6 +126,21 @@ func (db *DB) UpdateVersion(name, version string) error {
 			return errProjectNotFound
 		}
 
+		l, err := tx.CreateBucketIfNotExists(latestBucket)
+		if err != nil {
+			return err
+		}
+
+		pl, err := l.CreateBucketIfNotExists([]byte(name))
+		if err != nil {
+			return err
+		}
+
+		id, _ := pl.NextSequence()
+		if err := pl.Put(itob(id), []byte(major+minor)); err != nil {
+			return err
+		}
+
 		v, err := p.CreateBucketIfNotExists(versionBucket)
 		if err != nil {
 			return err
@@ -131,4 +148,45 @@ func (db *DB) UpdateVersion(name, version string) error {
 
 		return v.Put([]byte(major), []byte(minor))
 	})
+}
+
+func (db *DB) FirstLatest() (projectName string, versions []string, err error) {
+	err = db.b.View(func(tx *bolt.Tx) error {
+		l := tx.Bucket(latestBucket)
+		if l == nil {
+			return bolt.ErrBucketNotFound
+		}
+
+		c := l.Cursor()
+		project, _ := c.First()
+		if project == nil {
+			return errProjectNotFound
+		}
+		projectName = string(project)
+
+		pl := l.Bucket(project)
+		return pl.ForEach(func(_, version []byte) error {
+			versions = append(versions, string(version))
+			return nil
+		})
+	})
+	return
+}
+
+func (db *DB) DeleteLatest(projectName string) error {
+	return db.b.Update(func(tx *bolt.Tx) error {
+		l := tx.Bucket(latestBucket)
+		if l == nil {
+			return bolt.ErrBucketNotFound
+		}
+
+		return l.DeleteBucket([]byte(projectName))
+	})
+}
+
+// itob returns an 8-byte big endian representation of v.
+func itob(x uint64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, x)
+	return b
 }
