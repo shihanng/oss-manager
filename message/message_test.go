@@ -46,7 +46,42 @@ func TestForUpdate(t *testing.T) {
 
 	for _, tc := range testCases {
 		actual, err := ForUpdate(tc.project)
-		assert.Equal(tc.expected, actual)
 		assert.NoError(err)
+		assert.Equal(tc.expected, actual)
 	}
+}
+
+func TestForList(t *testing.T) {
+	assert := assert.New(t)
+
+	projects := []db.Project{
+		{
+			Name:     "Project One",
+			URL:      "http://one.example.com",
+			Versions: []string{"1", "2", "3"},
+		},
+		{
+			Name:     "Project Two",
+			URL:      "http://two.example.com",
+			Versions: []string{"a", "b", "c"},
+		},
+	}
+
+	expected := `Project One:
+ 1
+ 2
+ 3
+ http://one.example.com
+
+Project Two:
+ a
+ b
+ c
+ http://two.example.com
+
+`
+
+	actual, err := ForList(projects)
+	assert.NoError(err)
+	assert.Equal(expected, actual)
 }
